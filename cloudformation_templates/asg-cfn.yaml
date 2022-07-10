@@ -13,8 +13,8 @@ Resources:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: 10.199.0.0/16
-      EnableDnsSupport: 'true'
-      EnableDnsHostnames: 'true'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
   MyRT:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -92,7 +92,7 @@ Resources:
         KeyName: !Ref KeyPairParameter
         NetworkInterfaces:
         - AssociatePublicIpAddress: true
-          DeviceIndex: "0"
+          DeviceIndex: 0
           Groups: 
             - !GetAtt "MySG.GroupId"
   MyASG:
@@ -102,12 +102,12 @@ Resources:
         - !Ref MySubnet1a
         - !Ref MySubnet1b
         - !Ref MySubnet1c
-      DesiredCapacity: 3
-      MinSize: 3
-      MaxSize: 3
+      DesiredCapacity: '3'
+      MinSize: '3'
+      MaxSize: '3'
       LaunchTemplate:
         LaunchTemplateId: !Ref MyLaunchTemplate
-        Version: 1
+        Version: '1'
     UpdatePolicy:
       AutoScalingScheduledAction:
         IgnoreUnmodifiedGroupSizeProperties: 'true'

@@ -1,3 +1,9 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  Creates a VPC with three public subnets.
+  Creates an ASG that launches EC2 instances
+  Sets up an Update Policy that will do a rolling update when the LaunchTemplate
+  changes.
 Parameters:
   KeyPairParameter:
     Type: String
@@ -101,7 +107,7 @@ Resources:
       MaxSize: 3
       LaunchTemplate:
         LaunchTemplateId: !Ref MyLaunchTemplate
-        Version: 2
+        Version: 1
     UpdatePolicy:
       AutoScalingScheduledAction:
         IgnoreUnmodifiedGroupSizeProperties: 'true'

@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
 Description: |
   Creates a VPC with three public subnets.
   Creates an ASG that launches EC2 instances
@@ -7,7 +7,7 @@ Description: |
 Parameters:
   KeyPairParameter:
     Type: String
-    Default: "A4L"
+    Default: 'A4L'
 Resources:
   MyVPC:
     Type: AWS::EC2::VPC
@@ -66,7 +66,7 @@ Resources:
       InternetGatewayId: !Ref MyIGW
       VpcId: !Ref MyVPC
   MySG:
-    Type: "AWS::EC2::SecurityGroup"
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow ssh from all
       VpcId: !Ref MyVPC
@@ -84,7 +84,7 @@ Resources:
           ToPort: -1
           CidrIp: 0.0.0.0/0
   MyLaunchTemplate:
-    Type: "AWS::EC2::LaunchTemplate"
+    Type: AWS::EC2::LaunchTemplate
     Properties:
       LaunchTemplateData:
         ImageId: ami-0cff7528ff583bf9a
@@ -94,9 +94,9 @@ Resources:
         - AssociatePublicIpAddress: true
           DeviceIndex: 0
           Groups: 
-            - !GetAtt "MySG.GroupId"
+            - !GetAtt 'MySG.GroupId'
   MyASG:
-    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
         - !Ref MySubnet1a
@@ -110,11 +110,11 @@ Resources:
         Version: '1'
     UpdatePolicy:
       AutoScalingScheduledAction:
-        IgnoreUnmodifiedGroupSizeProperties: 'true'
+        IgnoreUnmodifiedGroupSizeProperties: true
       AutoScalingRollingUpdate:
         MinInstancesInService: '1'
         MaxBatchSize: '2'
-        WaitOnResourceSignals: 'false'
-        PauseTime: PT10M
+        WaitOnResourceSignals: false
+        PauseTime: 'PT10M'
   
 

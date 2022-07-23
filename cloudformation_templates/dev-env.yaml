@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Creates a development environment like the one that Derek Morgan creates in his tutorial, shared by FreeCodeCamp
+  in this youtube video (https://www.youtube.com/watch?v=iRaai1IBlB0&t=2s).  His tutorial is about Terraform but 
+  I wanted to try to do the same thing in the Console, CloudFormation, and Terraform.
+Outputs:
+  EC2InstanceIP:
+    Description: Public IP Address Associated with the EC2 Instance
+    Value: !GetAtt DevNode.PublicIp
+Parameters:
+  LocalCIDR:
+    Type: String
+    Description: Enter your local IP CIDR range (i.e. 55.55.55.55/32)
+    Default: '0.0.0.0/0'
+Resources:
+  # The lines until the next comment are credited to use kichik (https://stackoverflow.com/users/492773/kichik)
+  # from this Stack Overflow answer: https://stackoverflow.com/questions/55479945/cloudformation-always-use-latest-ami
+  # These lines allow you to lookup a non-amazon linux AMI by creating a function that uses the boto3 sdk to 
+  # query the describe-images endpoint for the required image.  This matches the functionality of the Terraform 
+  # project this is based on with its ability to do this -- all be it much more easily.   The addition of this 
+  # part of the code requires the addition of --capabilities CAPABILITY_IAM to your command line deploy of this template
+  # -- Start Stack Overflow Sourced Find AMI code
+  DescribeImagesRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DescribeImages
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action: ec2:DescribeImages
+                Effect: Allow
+                Resource: "*"
+  GetLatestAMI:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !Sub ${DescribeImagesRole.Arn}
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          import traceback
+          def handler(event, context):
+            try:
+              response = boto3.client('ec2').describe_images(
+                Owners=[event['ResourceProperties']['Owner']],
+                Filters=[
+                  {'Name': 'name', 'Values': [event['ResourceProperties']['Name']]},
+                  {'Name': 'architecture', 'Values': [event['ResourceProperties']['Architecture']]},
+                  {'Name': 'root-device-type', 'Values': ['ebs']},
+                ],
+              )
+
+              amis = sorted(response['Images'], key=lambda x: x['CreationDate'], reverse=True)
+              id = amis[0]['ImageId']
+
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, id)
+            except:
+              traceback.print_last()
+              cfnresponse.send(event, context, cfnresponse.FAIL, {}, "ok")
+  UbuntuAmi:
+    Type: Custom::FindAMI
+    Properties:
+      ServiceToken: !Sub ${GetLatestAMI.Arn}
+      Owner: "099720109477"
+      Name: "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      Architecture: "x86_64"
+  # -- End Stack Overflow Sourced Find AMI code
+  DevVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.123.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: dev-vpc
+  DevIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: dev-igw
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref DevIGW
+      VpcId: !Ref DevVPC
+  DevPublicSN:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: 10.123.1.0/24
+      VpcId: !Ref DevVPC
+      MapPublicIpOnLaunch: True
+      Tags:
+        - Key: Name
+          Value: dev-public
+  DevPublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DevVPC
+      Tags:
+        - Key: Name
+          Value: dev_public_rt
+  IGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DevPublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DevIGW
+  PublicSNRTAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref DevPublicRT
+      SubnetId: !Ref DevPublicSN
+  DevSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: dev_sg
+      GroupDescription: Dev Security Group
+      VpcId: !Ref DevVPC
+      SecurityGroupIngress:
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIp: !Ref LocalCIDR
+  DevKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: vs_code
+      PublicKeyMaterial: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExY5J7HPyd4F1IKAOVjBdwcCcF+PflF+bqycSxBjRZG
+  DevNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Ref UbuntuAmi
+      KeyName: !Ref DevKeyPair
+      SubnetId: !Ref DevPublicSN
+      SecurityGroupIds:
+        - !Ref DevSG
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo apt-get update -o Acquire::ForceIPv4=true -y &&
+          sudo apt-get install -o Acquire::ForceIPv4=true -y \
+          apt-transport-https \
+          ca-certificates \
+          curl \
+          gnupg-agent \
+          software-properties-common &&
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - &&
+          sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" &&
+          sudo apt-get update -o Acquire::ForceIPv4=true -y &&
+          sudo sudo apt-get install docker-ce docker-ce-cli containerd.io -o Acquire::ForceIPv4=true -y &&
+          sudo usermod -aG docker ubuntu
+      Tags:
+        - Key: Name
+          Value: dev-node
+    DependsOn: IGWRoute
